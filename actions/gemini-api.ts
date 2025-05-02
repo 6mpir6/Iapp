@@ -1,6 +1,6 @@
 "use server"
 
-import { GoogleGenAI } from "@google/genai"
+import { GoogleGenAI, Modality } from "@google/genai"
 
 interface GeminiImageGenerationRequest {
   prompt: string
@@ -33,7 +33,7 @@ export async function generateGeminiImage(
     // Initialize the Google Generative AI client
     const genAI = new GoogleGenAI(apiKey)
 
-    // Use the gemini-pro-vision model
+    // Use the gemini-2.0-flash-exp-image-generation model instead of Imagen
     const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp-image-generation" })
 
     // Generate content
@@ -41,6 +41,7 @@ export async function generateGeminiImage(
       contents: [{ role: "user", parts: [{ text: request.prompt }] }],
       generationConfig: {
         temperature: 0.7,
+        responseModalities: [Modality.TEXT, Modality.IMAGE],
       },
     })
 
