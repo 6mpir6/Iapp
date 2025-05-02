@@ -67,6 +67,8 @@ function extractBase64FromDataUri(dataUri: string): { base64Data: string; mimeTy
 
 export async function generateImage(options: ImageGenerationOptions) {
   try {
+    console.log(`[generateImage] Starting image generation with mode: ${options.mode}`)
+
     if (options.mode === "basic") {
       // Use Gemini 2.0 Flash Experimental for image generation
       return await generateImageWithGemini(options)
@@ -75,7 +77,7 @@ export async function generateImage(options: ImageGenerationOptions) {
       return await generateImageWithOpenAI(options)
     }
   } catch (error) {
-    console.error("Error generating image:", error)
+    console.error("[generateImage] Error generating image:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
@@ -88,12 +90,16 @@ async function generateImageWithGemini(options: ImageGenerationOptions) {
   const { prompt, aspectRatio } = options
 
   try {
-    const ai = getGoogleAIClient()
+    console.log("[generateImageWithGemini] Starting Gemini image generation")
+    console.log("[generateImageWithGemini] Prompt:", prompt)
+    console.log("[generateImageWithGemini] Aspect Ratio:", aspectRatio)
 
-    console.log("Generating image with Gemini 2.0 Flash Experimental...")
-    console.log("Prompt:", prompt)
+    const ai = getGoogleAIClient()
+    console.log("[generateImageWithGemini] Successfully initialized Google AI client")
 
     // Use generateContent with Gemini 2.0 Flash Experimental
+    console.log("[generateImageWithGemini] Calling Gemini API with model: gemini-2.0-flash-exp-image-generation")
+
     const response = await ai.models.generateContent({
       model: "gemini-2.0-flash-exp-image-generation",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -102,6 +108,8 @@ async function generateImageWithGemini(options: ImageGenerationOptions) {
         temperature: 0.7,
       },
     })
+
+    console.log("[generateImageWithGemini] Received response from Gemini API")
 
     // Extract image data from response
     let imageUrl: string | null = null
@@ -115,26 +123,29 @@ async function generateImageWithGemini(options: ImageGenerationOptions) {
             const mimeType = part.inlineData.mimeType
             const base64Data = part.inlineData.data
             imageUrl = `data:${mimeType};base64,${base64Data}`
+            console.log("[generateImageWithGemini] Successfully extracted image data")
             break
           } else if (part.text) {
             textResponse = part.text
+            console.log("[generateImageWithGemini] Extracted text response:", textResponse)
           }
         }
       }
     }
 
     if (!imageUrl) {
+      console.error("[generateImageWithGemini] No image was found in the response")
       throw new Error("No image was generated")
     }
 
-    console.log("Successfully generated image with Gemini")
+    console.log("[generateImageWithGemini] Successfully generated image with Gemini")
     return {
       success: true,
       imageUrl,
       textResponse,
     }
   } catch (error) {
-    console.error("Error generating image with Gemini:", error)
+    console.error("[generateImageWithGemini] Error generating image with Gemini:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred during Gemini generation",
@@ -147,12 +158,15 @@ async function generateImageWithOpenAI(options: ImageGenerationOptions) {
   const { prompt, negativePrompt, aspectRatio } = options
 
   try {
+    console.log("[generateImageWithOpenAI] Starting OpenAI image generation")
     const openai = getOpenAIClient()
 
     // Combine prompt and negative prompt
     const fullPrompt = negativePrompt ? `${prompt}. DO NOT include: ${negativePrompt}` : prompt
+    console.log("[generateImageWithOpenAI] Full prompt:", fullPrompt)
 
     const size = aspectRatioToDimensions(aspectRatio)
+    console.log("[generateImageWithOpenAI] Size:", size)
 
     // FIXED: Removed response_format parameter as it's not supported for gpt-image-1
     const response = await openai.images.generate({
@@ -165,18 +179,20 @@ async function generateImageWithOpenAI(options: ImageGenerationOptions) {
     })
 
     if (!response.data || response.data.length === 0) {
+      console.error("[generateImageWithOpenAI] No image data returned from OpenAI")
       throw new Error("No image data returned from OpenAI")
     }
 
     // For gpt-image-1, the response contains b64_json directly
     const dataUri = `data:image/png;base64,${response.data[0].b64_json}`
+    console.log("[generateImageWithOpenAI] Successfully generated image with OpenAI")
 
     return {
       success: true,
       imageUrl: dataUri,
     }
   } catch (error) {
-    console.error("Error generating image with OpenAI:", error)
+    console.error("[generateImageWithOpenAI] Error generating image with OpenAI:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred during OpenAI generation",

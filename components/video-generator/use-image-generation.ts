@@ -49,11 +49,13 @@ export function useImageGeneration() {
         setCurrentCaption(captionResult.caption)
       } else {
         console.error("Failed to generate caption:", captionResult.error)
-        alert(`Caption generation failed: ${captionResult.error || "Unknown error"}`)
+        // Don't show alert, just set a default caption
+        setCurrentCaption("Add your caption here...")
       }
     } catch (error) {
       console.error("Error generating caption", error)
-      alert("An unexpected error occurred during caption generation.")
+      // Don't show alert, just set a default caption
+      setCurrentCaption("Add your caption here...")
     } finally {
       setIsCaptionLoading(false)
     }
@@ -70,14 +72,38 @@ export function useImageGeneration() {
     setError(null)
 
     try {
-      const response = await generateImageAction({
+      // First try with the specified mode
+      let response = await generateImageAction({
         prompt,
         negativePrompt,
         aspectRatio,
         mode: generationMode,
       })
 
-      if (response.success && response.imageUrl) {
+      // If basic mode fails, try with advanced mode
+      if (!response.success && generationMode === "basic") {
+        console.log("Basic mode failed, trying advanced mode...")
+        response = await generateImageAction({
+          prompt,
+          negativePrompt,
+          aspectRatio,
+          mode: "advanced",
+        })
+      }
+
+      // If advanced mode fails too or was the original mode, use a placeholder
+      if (!response.success) {
+        console.error("Both image generation modes failed:", response.error)
+
+        // Create a placeholder image with the prompt text
+        const placeholderUrl = `/placeholder.svg?height=512&width=${
+          aspectRatio === "16:9" ? 910 : aspectRatio === "9:16" ? 288 : 512
+        }&text=${encodeURIComponent(prompt)}`
+
+        setGeneratedImageUrl(placeholderUrl)
+        setCurrentCaption(prompt) // Use the prompt as the caption
+        setError("Image generation failed. Using placeholder image.")
+      } else {
         setGeneratedImageUrl(response.imageUrl)
 
         // Automatically generate caption using Gemini
@@ -92,18 +118,26 @@ export function useImageGeneration() {
             setCurrentCaption(captionResponse.caption)
           } else {
             console.error("Failed to generate caption:", captionResponse.error)
+            setCurrentCaption(prompt) // Use the prompt as the caption
           }
         } catch (error) {
           console.error("Error generating caption:", error)
+          setCurrentCaption(prompt) // Use the prompt as the caption
         } finally {
           setIsCaptionLoading(false)
         }
-      } else {
-        setError(response.error || "Failed to generate image")
       }
     } catch (error) {
       console.error("Error generating image:", error)
       setError(error instanceof Error ? error.message : "Unknown error occurred")
+
+      // Create a placeholder image with the prompt text
+      const placeholderUrl = `/placeholder.svg?height=512&width=${
+        aspectRatio === "16:9" ? 910 : aspectRatio === "9:16" ? 288 : 512
+      }&text=${encodeURIComponent(prompt)}`
+
+      setGeneratedImageUrl(placeholderUrl)
+      setCurrentCaption(prompt) // Use the prompt as the caption
     } finally {
       setIsGenerating(false)
     }
@@ -141,18 +175,24 @@ export function useImageGeneration() {
               setCurrentCaption(captionResponse.caption)
             } else {
               console.error("Failed to generate caption for edited image:", captionResponse.error)
+              // Keep the existing caption
             }
           } catch (error) {
             console.error("Error generating caption for edited image:", error)
+            // Keep the existing caption
           } finally {
             setIsCaptionLoading(false)
           }
         } else {
           setError(response.error || "Failed to edit image")
+          // Keep the original image
+          setEditMode(false)
         }
       } catch (error) {
         console.error("Error editing image:", error)
         setError(error instanceof Error ? error.message : "Unknown error occurred")
+        // Keep the original image
+        setEditMode(false)
       } finally {
         setIsEditing(false)
       }
@@ -201,5 +241,6 @@ export function useImageGeneration() {
     editedImageUrl,
     resetImageState,
     generateCaption,
+    error,
   }
 }
