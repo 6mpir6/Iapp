@@ -1,132 +1,75 @@
 "use server"
 
-import { GoogleGenAI } from "@google/genai"
+import { GoogleGenerativeAI } from "@google/generative-ai"
 
-interface ImageCaptionRequest {
+// Initialize the Google Generative AI client
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "")
+
+interface GenerateImageCaptionParams {
   imageUrl: string
   style?: string
 }
 
-interface ImageCaptionResponse {
+interface GenerateImageCaptionResult {
   success: boolean
   caption?: string
   error?: string
 }
 
-/**
- * Generates a caption for an image using Google Gemini API
- * @param request Image caption request parameters
- * @returns Object containing the generated caption
- */
-export async function generateImageCaption(request: ImageCaptionRequest): Promise<ImageCaptionResponse> {
-  console.log(`Generating caption for image with style: "${request.style || "default"}"`)
-
+export async function generateImageCaption({
+  imageUrl,
+  style = "social media",
+}: GenerateImageCaptionParams): Promise<GenerateImageCaptionResult> {
   try {
-    // Check for API key
-    const apiKey = process.env.GEMINI_API_KEY
-    if (!apiKey) {
-      console.error("CRITICAL: GEMINI_API_KEY environment variable is not set.")
-      throw new Error("Server configuration error: Missing Gemini API Key.")
-    }
-
-    // Initialize the Google Generative AI client
-    const genAI = new GoogleGenAI(apiKey)
-
-    // Use the gemini-pro-vision model for image understanding
-    const model = genAI.getGenerativeModel({ model: "gemini-pro-vision" })
-
-    // Extract base64 data from data URI
-    let base64Data: string
-    let mimeType = "image/jpeg"
-
-    if (request.imageUrl.startsWith("data:")) {
-      const parts = request.imageUrl.split(",")
-      if (parts.length < 2) {
-        throw new Error("Invalid data URL format")
-      }
-
-      base64Data = parts[1]
-
-      // Try to extract mime type
-      const mimeMatch = parts[0].match(/data:(.*?);base64/)
-      if (mimeMatch && mimeMatch[1]) {
-        mimeType = mimeMatch[1]
-      }
-    } else if (request.imageUrl.startsWith("http")) {
-      // Fetch the image from URL
-      const response = await fetch(request.imageUrl)
-      const arrayBuffer = await response.arrayBuffer()
-      base64Data = Buffer.from(arrayBuffer).toString("base64")
-
-      // Try to determine mime type from URL
-      if (request.imageUrl.endsWith(".png")) {
-        mimeType = "image/png"
-      } else if (request.imageUrl.endsWith(".jpg") || request.imageUrl.endsWith(".jpeg")) {
-        mimeType = "image/jpeg"
-      } else if (request.imageUrl.endsWith(".webp")) {
-        mimeType = "image/webp"
-      }
+    // If the image is a data URL, extract the base64 data
+    let base64ImageData: string
+    if (imageUrl.startsWith("data:")) {
+      base64ImageData = imageUrl.split(",")[1]
     } else {
-      throw new Error("Unsupported image URL format")
+      // Fetch the image from URL
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`)
+      }
+      const arrayBuffer = await response.arrayBuffer()
+      base64ImageData = Buffer.from(arrayBuffer).toString("base64")
     }
 
-    // Prepare the prompt based on the requested style
-    let prompt = "Generate a detailed caption for this image."
+    // Get the model
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-preview-04-17" })
 
-    if (request.style) {
-      if (request.style.toLowerCase().includes("social media")) {
-        prompt = "Create an engaging social media caption for this image. Include relevant hashtags."
-      } else if (request.style.toLowerCase().includes("reel")) {
-        prompt = "Create a catchy caption for a social media reel featuring this image. Include trending hashtags."
-      } else if (request.style.toLowerCase().includes("product")) {
-        prompt = "Write a professional product description caption for this image."
-      } else {
-        prompt = `Create a ${request.style} style caption for this image.`
+    // Create the prompt based on the style
+    let prompt = "Generate a caption for this image."
+    if (style) {
+      prompt += ` The caption should be in the style of a ${style} post.`
+      if (style.includes("social media")) {
+        prompt += " Include relevant hashtags at the end."
       }
     }
 
-    // Generate content
-    const result = await model.generateContent({
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
-          ],
+    // Generate content with the image
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: "image/jpeg", // Assuming JPEG, adjust if needed
+          data: base64ImageData,
         },
-      ],
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 200,
       },
-    })
+      { text: prompt },
+    ])
 
-    // Extract text from response
-    let caption = ""
-
-    if (result.response && result.response.text) {
-      caption = result.response.text.trim()
-    }
-
-    if (!caption) {
-      throw new Error("No caption was generated")
-    }
-
-    console.log("Successfully generated caption with Gemini")
-    return { success: true, caption }
-  } catch (error: any) {
-    console.error("Error generating caption with Gemini:", error)
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    const response = await result.response
+    const caption = response.text()
 
     return {
+      success: true,
+      caption,
+    }
+  } catch (error) {
+    console.error("Error generating caption:", error)
+    return {
       success: false,
-      error: errorMessage,
+      error: error instanceof Error ? error.message : "Unknown error occurred",
     }
   }
 }

@@ -1,6 +1,6 @@
 "use server"
 
-import { GoogleGenAI, Modality } from "@google/genai"
+import { GoogleGenAI } from "@google/genai"
 import OpenAI from "openai"
 import type { AspectRatio, ImageEditOptions, ImageGenerationOptions } from "@/components/video-generator/types"
 
@@ -68,8 +68,8 @@ function extractBase64FromDataUri(dataUri: string): { base64Data: string; mimeTy
 export async function generateImage(options: ImageGenerationOptions) {
   try {
     if (options.mode === "basic") {
-      // Use Gemini 2.0 Flash Experimental instead of Imagen
-      return await generateImageWithGemini(options)
+      // Use Google's Imagen
+      return await generateImageWithImagen(options)
     } else {
       // Use OpenAI's GPT-4 Vision
       return await generateImageWithOpenAI(options)
@@ -83,61 +83,54 @@ export async function generateImage(options: ImageGenerationOptions) {
   }
 }
 
-// Generate image with Gemini 2.0 Flash Experimental
-async function generateImageWithGemini(options: ImageGenerationOptions) {
+// Generate image with Google's Imagen
+async function generateImageWithImagen(options: ImageGenerationOptions) {
   const { prompt, aspectRatio } = options
 
   try {
     const ai = getGoogleAIClient()
 
-    console.log("Generating image with Gemini 2.0 Flash Experimental...")
-    console.log("Prompt:", prompt)
+    // Use Imagen - FIXED: using models.generateImages instead of getGenerativeModel
+    let aspectRatioParam: string
+    switch (aspectRatio) {
+      case "16:9":
+        aspectRatioParam = "16:9"
+        break
+      case "9:16":
+        aspectRatioParam = "9:16"
+        break
+      case "1:1":
+      default:
+        aspectRatioParam = "1:1"
+        break
+    }
 
-    // Use gemini-2.0-flash-exp-image-generation instead of Imagen
-    const response = await ai.models.generateContent({
+    const response = await ai.models.generateImages({
       model: "gemini-2.0-flash-exp-image-generation",
-      contents: prompt,
+      prompt,
       config: {
-        responseModalities: [Modality.TEXT, Modality.IMAGE],
-        temperature: 0.7,
+        aspectRatio: aspectRatioParam,
+        numberOfImages: 1,
       },
     })
 
-    // Extract image data from response
-    let imageUrl: string | null = null
-    let textResponse: string | null = null
-
-    if (response.candidates && response.candidates.length > 0) {
-      const candidate = response.candidates[0]
-      if (candidate.content && candidate.content.parts) {
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) {
-            const mimeType = part.inlineData.mimeType
-            const base64Data = part.inlineData.data
-            imageUrl = `data:${mimeType};base64,${base64Data}`
-            break
-          } else if (part.text) {
-            textResponse = part.text
-          }
-        }
-      }
+    if (!response.generatedImages || response.generatedImages.length === 0) {
+      throw new Error("No images were generated")
     }
 
-    if (!imageUrl) {
-      throw new Error("No image was generated")
-    }
+    // Convert image to base64 data URI
+    const imgBytes = response.generatedImages[0].image.imageBytes
+    const dataUri = `data:image/png;base64,${imgBytes}`
 
-    console.log("Successfully generated image with Gemini")
     return {
       success: true,
-      imageUrl,
-      textResponse,
+      imageUrl: dataUri,
     }
   } catch (error) {
-    console.error("Error generating image with Gemini:", error)
+    console.error("Error generating image with Imagen:", error)
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred during Gemini generation",
+      error: error instanceof Error ? error.message : "Unknown error occurred during Imagen generation",
     }
   }
 }
@@ -233,7 +226,7 @@ async function editImageWithGemini(imageUrl: string, prompt: string) {
       model: "gemini-2.0-flash-exp-image-generation",
       contents,
       config: {
-        responseModalities: [Modality.TEXT, Modality.IMAGE],
+        responseModalities: ["Text", "Image"],
       },
     })
 
