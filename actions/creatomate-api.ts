@@ -11,8 +11,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const STORAGE_BUCKET = "creatomate-assets"
 
 // Template IDs
-const PRODUCT_SHOWCASE_TEMPLATE_ID = "4cc27f0e-4641-44c2-a768-6b757225e11f"
-const PRODUCT_CAROUSEL_TEMPLATE_ID = "543a4dfc-2286-45f1-acf5-86070a961708"
+const PRODUCT_SHOWCASE_TEMPLATE_ID = "d22afb81-612a-47da-9923-090afeac32a1"
+const PRODUCT_CAROUSEL_TEMPLATE_ID = "cdaca80d-b8aa-4b20-a693-223f5ef24f77"
 
 // Types
 export type CreatomateStatus = "planned" | "waiting" | "transcribing" | "rendering" | "succeeded" | "failed"

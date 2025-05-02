@@ -137,8 +137,8 @@ export function TimelineScene({
                 <span className="text-xs text-blue-600 dark:text-blue-400 mr-1">📝</span>"{scene.caption}"
               </p>
             ) : (
-              <p className="text-xs text-gray-400 dark:text-gray-500 italic w-full truncate text-center">
-                No caption (add for voiceover)
+              <p className="text-xs text-red-500 dark:text-red-400 italic w-full truncate text-center">
+                No caption (add for narration & display)
               </p>
             )}
             <Button

@@ -25,8 +25,9 @@ import { CaptionInput } from "./caption-input"
 import { useMobile } from "@/hooks/use-mobile"
 import { useImageGeneration } from "./use-image-generation"
 import { Progress } from "@/components/ui/progress"
-import { Loader2, Upload, Film, ImageIcon, PlusCircle, Volume2 } from "lucide-react"
+import { Loader2, Upload, Film, ImageIcon, PlusCircle, Volume2, Mic } from "lucide-react"
 import { generateCreatomateVideo, getCreatomateRenderStatus } from "@/actions/generate-creatomate-video"
+import { getAvailableVoices } from "@/actions/elevenlabs-api"
 
 export default function VideoGenerator() {
   const { isMobile } = useMobile()
@@ -78,6 +79,8 @@ export default function VideoGenerator() {
 
   // Narration state
   const [enableNarration, setEnableNarration] = useState(false)
+  const [selectedVoice, setSelectedVoice] = useState<string>("alloy") // Default voice
+  const availableVoices = getAvailableVoices()
 
   // Creatomate API state
   const [renderId, setRenderId] = useState<string | null>(null)
@@ -303,6 +306,9 @@ export default function VideoGenerator() {
           ${productData.cta || "Shop Now"}!`
       }
 
+      // Get the voice ID from the selected voice
+      const voiceId = availableVoices[selectedVoice]
+
       // Call the generateCreatomateVideo function
       const response = await generateCreatomateVideo({
         slides,
@@ -323,6 +329,7 @@ export default function VideoGenerator() {
           voiceoverText: voiceoverText,
         },
         generateNarration: enableNarration,
+        voiceId: voiceId, // Pass the selected voice ID
       })
 
       if (response.success && response.renders && response.renders.length > 0) {
@@ -339,7 +346,7 @@ export default function VideoGenerator() {
       setVideoError(error instanceof Error ? error.message : "Unknown error occurred")
       setIsGeneratingVideo(false)
     }
-  }, [scenes, videoTheme, productData, enableNarration])
+  }, [scenes, videoTheme, productData, enableNarration, selectedVoice, availableVoices])
 
   // Poll for render status updates
   useEffect(() => {
@@ -644,30 +651,56 @@ export default function VideoGenerator() {
                   <ProductShowcaseForm data={productData} onChange={setProductData} disabled={isGeneratingVideo} />
                 )}
 
-                {/* Narration option */}
-                <div className="flex items-center space-x-2">
-                  <Switch
-                    id="narration-mode"
-                    checked={enableNarration}
-                    onCheckedChange={setEnableNarration}
-                    disabled={isGeneratingVideo}
-                  />
-                  <Label htmlFor="narration-mode" className="flex items-center cursor-pointer">
-                    <Volume2 className="mr-2 h-4 w-4" />
-                    Generate AI Narration from Captions
-                  </Label>
-                </div>
-
-                {enableNarration && (
-                  <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
-                    <p>Captions will be converted to spoken narration using ElevenLabs AI voices.</p>
-                    {scenes.some((scene) => !scene.caption) && (
-                      <p className="mt-1 text-amber-600 dark:text-amber-400">
-                        Note: Some scenes don't have captions. Add captions to all scenes for best results.
-                      </p>
-                    )}
+                {/* Narration options */}
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="narration-mode"
+                      checked={enableNarration}
+                      onCheckedChange={setEnableNarration}
+                      disabled={isGeneratingVideo}
+                    />
+                    <Label htmlFor="narration-mode" className="flex items-center cursor-pointer">
+                      <Volume2 className="mr-2 h-4 w-4" />
+                      Generate AI Narration from Captions
+                    </Label>
                   </div>
-                )}
+
+                  {enableNarration && (
+                    <div className="space-y-4">
+                      <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
+                        <p>Captions will be converted to spoken narration using ElevenLabs AI voices.</p>
+                        <p className="mt-1 font-medium">Captions will also be displayed as text in the video.</p>
+                        {scenes.some((scene) => !scene.caption) && (
+                          <p className="mt-1 text-amber-600 dark:text-amber-400">
+                            <strong>Warning:</strong> Some scenes don't have captions. Add captions to all scenes for
+                            best results.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="voice-selection" className="flex items-center">
+                          <Mic className="mr-2 h-4 w-4" />
+                          Voice Selection
+                        </Label>
+                        <Select value={selectedVoice} onValueChange={setSelectedVoice} disabled={isGeneratingVideo}>
+                          <SelectTrigger id="voice-selection">
+                            <SelectValue placeholder="Select a voice" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="alloy">Alloy (Versatile)</SelectItem>
+                            <SelectItem value="echo">Echo (Versatile)</SelectItem>
+                            <SelectItem value="fable">Fable (Narration)</SelectItem>
+                            <SelectItem value="shimmer">Shimmer (Cheerful)</SelectItem>
+                            <SelectItem value="nova">Nova (Authoritative)</SelectItem>
+                            <SelectItem value="ember">Ember (Warm)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 {videoTheme === "social-reel" && scenes.length < 3 && (
                   <div className="text-amber-500 text-sm">

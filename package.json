@@ -58,8 +58,8 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
-    "@dnd-kit/core": "latest",
     "ws": "latest",
+    "@dnd-kit/core": "latest",
     "@google/genai": "latest",
     "uuid": "latest",
     "axios": "latest",
@@ -69,9 +69,9 @@
     "papaparse": "latest",
     "@google/generative-ai": "latest",
     "@supabase/supabase-js": "latest",
+    "openai": "latest",
     "@dnd-kit/sortable": "latest",
-    "@dnd-kit/utilities": "latest",
-    "openai": "latest"
+    "@dnd-kit/utilities": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

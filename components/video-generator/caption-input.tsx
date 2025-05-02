@@ -44,7 +44,7 @@ export function CaptionInput({ value, onChange, isLoading, disabled, imageUrl }:
     <div className="space-y-2">
       <div className="flex justify-between items-center">
         <Label htmlFor="caption" className="text-sm font-medium">
-          Caption (will be displayed and read in video)
+          Caption <span className="text-blue-600">(will be displayed and narrated in video)</span>
         </Label>
         <Button
           variant="outline"

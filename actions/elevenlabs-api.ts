@@ -151,6 +151,6 @@ export async function generateVoiceover({
 /**
  * Get available ElevenLabs voices
  */
-export async function getAvailableVoices() {
+export function getAvailableVoices() {
   return ELEVENLABS_VOICES
 }
