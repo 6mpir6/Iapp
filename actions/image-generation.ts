@@ -95,7 +95,7 @@ async function generateImageWithGemini(options: ImageGenerationOptions) {
 
     // Use gemini-2.0-flash-exp-image-generation instead of Imagen
     const response = await ai.models.generateContent({
-      model: "imagen-3.0-generate-002",
+      model: "gemini-2.0-flash-exp-image-generation",
       contents: prompt,
       config: {
         responseModalities: [Modality.TEXT, Modality.IMAGE],
