@@ -168,14 +168,16 @@ async function generateImageWithOpenAI(options: ImageGenerationOptions) {
     const size = aspectRatioToDimensions(aspectRatio)
     console.log("[generateImageWithOpenAI] Size:", size)
 
-    // FIXED: Removed response_format parameter as it's not supported for gpt-image-1
+    // Configure request for gpt-image-1 model
+    // Note: gpt-image-1 always returns base64 data and doesn't support response_format parameter
     const response = await openai.images.generate({
       model: "gpt-image-1",
       prompt: fullPrompt,
       size: size as any,
       quality: "high",
       n: 1,
-      // response_format parameter removed as it's not needed - gpt-image-1 always returns base64
+      background: "auto", // Can be "auto", "transparent", or "opaque"
+      output_format: "png", // Can be "png", "jpeg", or "webp"
     })
 
     if (!response.data || response.data.length === 0) {
@@ -302,13 +304,15 @@ async function editImageWithOpenAIMask(imageUrl: string, prompt: string, maskUrl
       throw new Error("Failed to extract image or mask data")
     }
 
-    // Create edit request
+    // Create edit request for gpt-image-1
     const response = await openai.images.edit({
       model: "gpt-image-1",
       image: Buffer.from(imageBase64, "base64"),
       mask: Buffer.from(maskBase64, "base64"),
       prompt,
       n: 1,
+      size: "1024x1024", // You can adjust this based on your needs
+      quality: "high",
     })
 
     if (!response.data || response.data.length === 0 || !response.data[0].b64_json) {

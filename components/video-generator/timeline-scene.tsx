@@ -81,6 +81,11 @@ export function TimelineScene({
         <div className="absolute top-0 left-0 bg-black bg-opacity-70 text-white text-xs px-1.5 py-0.5 rounded-br">
           {index + 1}
         </div>
+        {scene.isVideo && (
+          <div className="absolute bottom-0 left-0 bg-red-600 bg-opacity-80 text-white text-xs px-1.5 py-0.5 rounded-tr">
+            VIDEO
+          </div>
+        )}
         <Button
           variant="destructive"
           size="icon"
