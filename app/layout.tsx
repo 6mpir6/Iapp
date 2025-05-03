@@ -58,6 +58,12 @@ export default function RootLayout({
                 >
                   Visualize
                 </a>
+                <a
+                  href="/social-accounts"
+                  className="px-4 py-2 text-sm text-gray-800 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition"
+                >
+                  Social
+                </a>
               </nav>
 
               {/* Connect Store Button removed */}
