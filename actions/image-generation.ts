@@ -23,15 +23,16 @@ const getOpenAIClient = () => {
 }
 
 // Map aspect ratio to dimensions for the OpenAI API
-const aspectRatioToDimensions = (aspectRatio: AspectRatio) => {
+// Updated to match gpt-image-1 supported sizes
+const aspectRatioToDimensions = (aspectRatio: AspectRatio): string => {
   switch (aspectRatio) {
     case "16:9":
-      return "1792x1024"
+      return "1536x1024" // Landscape format
     case "9:16":
-      return "1024x1792"
+      return "1024x1536" // Portrait format
     case "1:1":
     default:
-      return "1024x1024"
+      return "1024x1024" // Square format
   }
 }
 
@@ -153,41 +154,42 @@ async function generateImageWithGemini(options: ImageGenerationOptions) {
   }
 }
 
-// Generate image with OpenAI's GPT-4 Vision
+// Generate image with OpenAI's gpt-image-1
 async function generateImageWithOpenAI(options: ImageGenerationOptions) {
   const { prompt, negativePrompt, aspectRatio } = options
 
   try {
-    console.log("[generateImageWithOpenAI] Starting OpenAI image generation")
+    console.log("[generateImageWithOpenAI] Starting OpenAI image generation with gpt-image-1")
     const openai = getOpenAIClient()
 
     // Combine prompt and negative prompt
     const fullPrompt = negativePrompt ? `${prompt}. DO NOT include: ${negativePrompt}` : prompt
     console.log("[generateImageWithOpenAI] Full prompt:", fullPrompt)
 
+    // Get the correct size based on aspect ratio
     const size = aspectRatioToDimensions(aspectRatio)
     console.log("[generateImageWithOpenAI] Size:", size)
 
-    // Configure request for gpt-image-1 model
-    // Note: gpt-image-1 always returns base64 data and doesn't support response_format parameter
+    // Configure request for gpt-image-1 model with updated parameters
     const response = await openai.images.generate({
       model: "gpt-image-1",
       prompt: fullPrompt,
-      size: size as any,
-      quality: "high",
+      size: size, // Now correctly mapped to "1024x1024", "1536x1024", or "1024x1536"
       n: 1,
-      background: "auto", // Can be "auto", "transparent", or "opaque"
-      output_format: "png", // Can be "png", "jpeg", or "webp"
+      quality: "high", // Options: "high", "medium", "low", or "auto"
+      background: "auto", // Options: "transparent", "opaque", or "auto"
+      output_format: "png", // Options: "png", "jpeg", or "webp"
+      // Note: response_format is not supported for gpt-image-1, it always returns b64_json
     })
 
-    if (!response.data || response.data.length === 0) {
+    if (!response.data || response.data.length === 0 || !response.data[0].b64_json) {
       console.error("[generateImageWithOpenAI] No image data returned from OpenAI")
       throw new Error("No image data returned from OpenAI")
     }
 
-    // For gpt-image-1, the response contains b64_json directly
+    // For gpt-image-1, the response always contains b64_json
     const dataUri = `data:image/png;base64,${response.data[0].b64_json}`
-    console.log("[generateImageWithOpenAI] Successfully generated image with OpenAI")
+    console.log("[generateImageWithOpenAI] Successfully generated image with OpenAI gpt-image-1")
 
     return {
       success: true,
@@ -291,7 +293,7 @@ async function editImageWithGemini(imageUrl: string, prompt: string) {
   }
 }
 
-// Edit image with OpenAI mask
+// Edit image with OpenAI mask using gpt-image-1
 async function editImageWithOpenAIMask(imageUrl: string, prompt: string, maskUrl: string) {
   try {
     const openai = getOpenAIClient()
@@ -311,8 +313,9 @@ async function editImageWithOpenAIMask(imageUrl: string, prompt: string, maskUrl
       mask: Buffer.from(maskBase64, "base64"),
       prompt,
       n: 1,
-      size: "1024x1024", // You can adjust this based on your needs
+      size: "1024x1024", // Default size for edits
       quality: "high",
+      background: "auto", // Options: "transparent", "opaque", or "auto"
     })
 
     if (!response.data || response.data.length === 0 || !response.data[0].b64_json) {
