@@ -326,29 +326,6 @@ export default function VideoGenerator() {
     setVideoProgress(0)
 
     try {
-      // Add a fallback mechanism for production environments
-      const isProduction = process.env.NODE_ENV === "production"
-
-      if (isProduction) {
-        try {
-          // First, test the Creatomate connection
-          const testResponse = await fetch("/api/test-creatomate", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ test: true }),
-          })
-
-          if (!testResponse.ok) {
-            throw new Error("Creatomate API connection test failed")
-          }
-        } catch (testError) {
-          console.warn("Using fallback video generation method due to API test failure:", testError)
-          // You could implement a fallback here or continue with the normal flow
-          // For now, we'll just log the warning and continue
-        }
-      }
       // Prepare slides for Creatomate
       const slides = scenes.map((scene) => ({
         frameUrl: scene.imageUrl,
