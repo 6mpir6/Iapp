@@ -1,134 +1,182 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Loader2, Wand2 } from "lucide-react"
-import { editImage } from "@/actions/image-generation"
-import { MaskEditor } from "./mask-editor"
-import { useImageDataProcessor } from "./image-data-processor"
+import { Input } from "@/components/ui/input"
+import { Wand2, Loader2, Film, Video } from "lucide-react"
+import { createRunwayVideo, getRunwayVideoStatus } from "@/actions/runway-api"
 
 interface ImageEditPanelProps {
-  imageUrl: string
-  onEditComplete: (newImageUrl: string) => void
+  onEditModeChange: (mode: boolean) => void
+  editPrompt: string
+  onEditPromptChange: (prompt: string) => void
+  onApplyEdit: () => void
+  isEditing: boolean
+  disabled: boolean
+  imageUrl?: string | null
+  onCreateVideo?: (videoUrl: string) => void
 }
 
-export function ImageEditPanel({ imageUrl, onEditComplete }: ImageEditPanelProps) {
-  const [prompt, setPrompt] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [showMaskEditor, setShowMaskEditor] = useState(false)
-  const [maskUrl, setMaskUrl] = useState<string | null>(null)
+export function ImageEditPanel({
+  onEditModeChange,
+  editPrompt,
+  onEditPromptChange,
+  onApplyEdit,
+  isEditing,
+  disabled,
+  imageUrl,
+  onCreateVideo,
+}: ImageEditPanelProps) {
+  const [isCreatingVideo, setIsCreatingVideo] = useState(false)
+  const [videoError, setVideoError] = useState<string | null>(null)
+  const [generationId, setGenerationId] = useState<string | null>(null)
+  const [pollingStatus, setPollingStatus] = useState<string | null>(null)
 
-  // Use our helper hook
-  const { extractBase64FromDataUri } = useImageDataProcessor()
+  const handleCreateVideo = async () => {
+    if (!imageUrl) {
+      setVideoError("No image available for video creation")
+      return
+    }
 
-  const handleEditImage = async () => {
-    if (!prompt.trim() || isLoading) return
-
-    setIsLoading(true)
-    setError(null)
+    setIsCreatingVideo(true)
+    setVideoError(null)
+    setPollingStatus("Starting video generation...")
 
     try {
-      // Process the image data on the client side
-      const { base64Data: imageBase64, mimeType } = extractBase64FromDataUri(imageUrl)
-      let maskBase64 = null
+      console.log("Creating video from image:", imageUrl.substring(0, 50) + "...")
 
-      if (maskUrl) {
-        const { base64Data } = extractBase64FromDataUri(maskUrl)
-        maskBase64 = base64Data
-      }
-
-      // Now we can safely pass the processed data to the server action
-      const result = await editImage({
-        imageUrl: imageBase64,
-        prompt,
-        maskUrl: maskBase64,
+      const response = await createRunwayVideo({
+        prompt: editPrompt || "Cinematic camera movement",
+        image: imageUrl,
       })
 
-      if (!result.success || !result.imageUrl) {
-        throw new Error(result.error || "Failed to edit image")
+      if (!response.success || response.error) {
+        setVideoError(response.error || "Failed to start video generation")
+        setIsCreatingVideo(false)
+        return
       }
 
-      onEditComplete(result.imageUrl)
-      setPrompt("")
-      setMaskUrl(null)
-      setShowMaskEditor(false)
+      if (response.generationId) {
+        setGenerationId(response.generationId)
+        setPollingStatus(`Video generation started. Status: ${response.status || "PENDING"}`)
+      } else {
+        setVideoError("No generation ID returned")
+        setIsCreatingVideo(false)
+      }
     } catch (error) {
-      console.error("Error editing image:", error)
-      setError(error instanceof Error ? error.message : "Unknown error occurred")
-    } finally {
-      setIsLoading(false)
+      setVideoError(error instanceof Error ? error.message : "Unknown error")
+      setIsCreatingVideo(false)
     }
   }
 
-  const handleMaskGenerated = (maskDataUrl: string) => {
-    setMaskUrl(maskDataUrl)
-    setShowMaskEditor(false)
-  }
+  // Poll for video status
+  useEffect(() => {
+    if (!generationId || !isCreatingVideo) return
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await getRunwayVideoStatus(generationId)
+
+        if (!response.success || response.error) {
+          setVideoError(response.error || "Video generation failed")
+          setIsCreatingVideo(false)
+          clearInterval(pollInterval)
+          return
+        }
+
+        if (response.status) {
+          setPollingStatus(`Status: ${response.status}`)
+        }
+
+        if (response.videoUrl) {
+          if (onCreateVideo) {
+            onCreateVideo(response.videoUrl)
+          }
+          setIsCreatingVideo(false)
+          setPollingStatus("Video created successfully!")
+          clearInterval(pollInterval)
+        }
+      } catch (error) {
+        setVideoError(error instanceof Error ? error.message : "Unknown error during polling")
+        setIsCreatingVideo(false)
+        clearInterval(pollInterval)
+      }
+    }, 5000) // Poll every 5 seconds
+
+    return () => clearInterval(pollInterval)
+  }, [generationId, isCreatingVideo, onCreateVideo])
 
   return (
-    <div className="space-y-4">
-      {showMaskEditor ? (
-        <MaskEditor
-          imageUrl={imageUrl}
-          onMaskGenerated={handleMaskGenerated}
-          onCancel={() => setShowMaskEditor(false)}
-        />
-      ) : (
-        <>
-          <div className="space-y-2">
-            <label htmlFor="edit-prompt" className="block text-sm font-medium">
-              Edit Instructions
-            </label>
-            <Textarea
-              id="edit-prompt"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Describe how you want to edit this image..."
-              className="min-h-[100px]"
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" onClick={() => setShowMaskEditor(true)} disabled={isLoading}>
-              Use Mask Editor
-            </Button>
-
-            {maskUrl && (
-              <Button variant="outline" onClick={() => setMaskUrl(null)} disabled={isLoading} className="text-red-500">
-                Clear Mask
-              </Button>
-            )}
-          </div>
-
-          {maskUrl && (
-            <div className="mt-2">
-              <p className="text-sm text-green-600 mb-2">Mask applied! White areas will be edited.</p>
-              <div className="relative w-32 h-32 border border-gray-300 rounded overflow-hidden">
-                <img src={maskUrl || "/placeholder.svg"} alt="Mask preview" className="object-contain w-full h-full" />
-              </div>
-            </div>
-          )}
-
-          <Button onClick={handleEditImage} disabled={isLoading || !prompt.trim()} className="w-full">
-            {isLoading ? (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2">
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => onEditModeChange(true)}
+            disabled={disabled || isEditing || isCreatingVideo}
+            className="flex-1"
+          >
+            Edit with Mask
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleCreateVideo}
+            disabled={disabled || isEditing || isCreatingVideo || !imageUrl}
+            className="flex-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/30"
+          >
+            {isCreatingVideo ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Editing...
+                Creating...
               </>
             ) : (
               <>
-                <Wand2 className="mr-2 h-4 w-4" />
-                Apply Edit
+                <Film className="mr-2 h-4 w-4" />
+                Create Video
               </>
             )}
           </Button>
+        </div>
+        <Input
+          placeholder="Describe your edit or video motion..."
+          value={editPrompt}
+          onChange={(e) => onEditPromptChange(e.target.value)}
+          disabled={disabled || isEditing || isCreatingVideo}
+        />
+      </div>
+      <Button
+        onClick={onApplyEdit}
+        disabled={disabled || isEditing || isCreatingVideo || !editPrompt.trim()}
+        className="w-full"
+      >
+        {isEditing ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Applying Edit...
+          </>
+        ) : (
+          <>
+            <Wand2 className="mr-2 h-4 w-4" />
+            Apply Text Edit
+          </>
+        )}
+      </Button>
 
-          {error && <div className="p-3 text-sm bg-red-100 border border-red-300 text-red-800 rounded">{error}</div>}
-        </>
+      {isCreatingVideo && pollingStatus && (
+        <div className="text-sm text-blue-600 dark:text-blue-400 mt-2 flex items-center">
+          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+          {pollingStatus}
+        </div>
       )}
+
+      {!isCreatingVideo && pollingStatus === "Video created successfully!" && (
+        <div className="text-sm text-green-600 dark:text-green-400 mt-2 flex items-center">
+          <Video className="mr-2 h-3 w-3" />
+          {pollingStatus}
+        </div>
+      )}
+
+      {videoError && <div className="text-sm text-red-500 mt-2">{videoError}</div>}
     </div>
   )
 }
