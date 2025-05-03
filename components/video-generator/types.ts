@@ -2,7 +2,7 @@ export type AspectRatio = "16:9" | "9:16" | "1:1"
 
 export type GenerationMode = "basic" | "advanced"
 
-export type VideoTheme = "social-reel" | "product-showcase"
+export type VideoTheme = "social-reel" | "product-showcase" | "movie"
 
 export interface ImageGenerationOptions {
   prompt: string
@@ -33,4 +33,17 @@ export interface ProductShowcaseData {
   website: string
   logoUrl?: string | null
   voiceoverText?: string
+}
+
+export interface MovieGenerationData {
+  prompt: string
+  numberOfClips: number
+  clipDuration: number
+  transitionDuration: number
+}
+
+export interface VideoGenerationOptions {
+  scenes: Scene[]
+  theme: VideoTheme
+  productData?: ProductShowcaseData
 }

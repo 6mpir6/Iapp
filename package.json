@@ -29,7 +29,7 @@
     "@radix-ui/react-scroll-area": "1.2.2",
     "@radix-ui/react-select": "2.1.4",
     "@radix-ui/react-separator": "1.1.1",
-    "@radix-ui/react-slider": "1.2.2",
+    "@radix-ui/react-slider": "latest",
     "@radix-ui/react-slot": "1.1.1",
     "@radix-ui/react-switch": "latest",
     "@radix-ui/react-tabs": "latest",
@@ -58,8 +58,8 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
-    "ws": "latest",
     "@dnd-kit/core": "latest",
+    "ws": "latest",
     "@google/genai": "latest",
     "uuid": "latest",
     "axios": "latest",
@@ -69,9 +69,9 @@
     "papaparse": "latest",
     "@google/generative-ai": "latest",
     "@supabase/supabase-js": "latest",
-    "openai": "latest",
     "@dnd-kit/sortable": "latest",
-    "@dnd-kit/utilities": "latest"
+    "@dnd-kit/utilities": "latest",
+    "openai": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",

@@ -3,9 +3,8 @@
 import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button" // Assuming shadcn/ui
 import { Textarea } from "@/components/ui/textarea" // Assuming shadcn/ui
-import { editImage } from "@/actions/generate-images" // Keep for Gemini Edit (needs update later maybe)
 import { remixIdeogramImage } from "@/actions/ideogram-api"
-import { generateGeminiImage } from "@/actions/gemini-api" // <--- Import the new Gemini action
+import { generateGeminiImage, editGeminiImage } from "@/actions/gemini-api" // <--- Import the new Gemini action
 import { analyzeImages } from "@/actions/analyze-images" // Assuming this exists and works
 import { generateStabilityVideo, checkVideoGenerationStatus } from "@/actions/stability-video-api" // Import the updated API
 import { Loader2, Download, RefreshCw, ImageIcon, Wand2, Sparkles, X, Lightbulb, Zap, Film } from "lucide-react"
@@ -187,7 +186,7 @@ export function ImageGenerator() {
     }
   }
 
-  // --- Updated to use Gemini ---
+  // --- Updated to use new Gemini API ---
   const handleGenerateImage = async () => {
     if (!generatePrompt.trim() || isLoading || isGeneratingVideo) return
 
@@ -200,7 +199,7 @@ export function ImageGenerator() {
       // Call the new server action
       const result = await generateGeminiImage({
         prompt: generatePrompt,
-        // No need to pass style/aspect ratio here for Gemini
+        negativePrompt: "", // Optional negative prompt
       })
 
       console.log("Gemini action result:", result)
@@ -232,7 +231,7 @@ export function ImageGenerator() {
     }
   }
 
-  // --- Edit Image Handler (Keep existing logic, Gemini vs Ideogram choice) ---
+  // --- Edit Image Handler (Updated for new Gemini API) ---
   const handleEditImage = async () => {
     if (!currentImage || !editPrompt.trim() || isLoading || isGeneratingVideo) return
 
@@ -259,28 +258,20 @@ export function ImageGenerator() {
           throw new Error(resultUrl || "Failed to edit image with Advanced Edit. Check parameters or try again.")
         }
       } else {
-        // --- Standard Edit (using existing `editImage` action) ---
-        // NOTE: You might want to eventually replace `editImage` with a Gemini-based
-        // image *editing* action if the Gemini API supports that well (e.g., using image+text input).
-        // For now, we keep the existing `editImage` action.
-        console.log("Using Standard Edit (current editImage action)")
-        const isDataUrl = currentImage.startsWith("data:image/")
+        // --- Standard Edit (using new Gemini API) ---
+        console.log("Using Standard Edit (Gemini API)")
         const isPlaceholder = currentImage.startsWith("/placeholder.svg")
 
         if (isPlaceholder) {
           throw new Error("Cannot edit a placeholder image. Please upload or generate a real image first.")
         }
 
-        const result = await editImage({
-          imageUrl: currentImage,
-          prompt: editPrompt,
-          isExternalUrl: !isDataUrl,
-        })
+        const result = await editGeminiImage(currentImage, editPrompt)
 
-        if (!result || !result.url || result.url.toLowerCase().startsWith("error")) {
-          throw new Error(result?.url || "Failed to edit image. Please try a different prompt.")
+        if (!result || !result.imageUrl || result.imageUrl.toLowerCase().startsWith("error")) {
+          throw new Error(result?.error || "Failed to edit image. Please try a different prompt.")
         }
-        resultUrl = result.url
+        resultUrl = result.imageUrl
       }
 
       // Update state

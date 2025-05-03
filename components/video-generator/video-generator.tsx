@@ -18,6 +18,7 @@ import { ImagePreview } from "./image-preview"
 import { TimelineScene } from "./timeline-scene"
 import { VideoPreview } from "./video-preview"
 import { ProductShowcaseForm } from "./product-showcase-form"
+import { MovieForm } from "./movie-form"
 import { ImageEditPanel } from "./image-edit-panel"
 import { MaskEditor } from "./mask-editor"
 import type { AspectRatio, GenerationMode, Scene, VideoTheme } from "./types"
@@ -25,9 +26,10 @@ import { CaptionInput } from "./caption-input"
 import { useMobile } from "@/hooks/use-mobile"
 import { useImageGeneration } from "./use-image-generation"
 import { Progress } from "@/components/ui/progress"
-import { Loader2, Upload, Film, ImageIcon, PlusCircle, Volume2, Mic } from "lucide-react"
+import { Loader2, Upload, Film, ImageIcon, PlusCircle, Volume2, Clapperboard } from "lucide-react"
 import { generateCreatomateVideo, getCreatomateRenderStatus } from "@/actions/generate-creatomate-video"
-import { getAvailableVoices } from "@/actions/elevenlabs-api"
+import { generateVeoVideo } from "@/actions/veo-api"
+import { stitchVideos, checkStitchingStatus } from "@/actions/stitch-videos"
 
 export default function VideoGenerator() {
   const { isMobile } = useMobile()
@@ -77,10 +79,16 @@ export default function VideoGenerator() {
     logoUrl: null as string | null,
   })
 
+  // Movie generation state
+  const [movieData, setMovieData] = useState({
+    prompt: "",
+    numberOfClips: 3,
+    clipDuration: 5,
+    transitionDuration: 1,
+  })
+
   // Narration state
   const [enableNarration, setEnableNarration] = useState(false)
-  const [selectedVoice, setSelectedVoice] = useState<string>("alloy") // Default voice
-  const availableVoices = getAvailableVoices()
 
   // Creatomate API state
   const [renderId, setRenderId] = useState<string | null>(null)
@@ -90,6 +98,9 @@ export default function VideoGenerator() {
   const [isGeneratingVideo, setIsGeneratingVideo] = useState(false)
   const [videoProgress, setVideoProgress] = useState(0)
   const [polling, setPolling] = useState(false)
+
+  // Veo API state
+  const [generatedClips, setGeneratedClips] = useState<string[]>([])
 
   // File input refs
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -267,10 +278,16 @@ export default function VideoGenerator() {
     setRenderId(null)
     setRenderStatus(null)
     setPolling(false)
+    setGeneratedClips([])
   }, [])
 
   // Generate video handler - Using our updated generateCreatomateVideo function
   const handleGenerateVideo = useCallback(async () => {
+    if (videoTheme === "movie") {
+      await handleGenerateMovieVideo()
+      return
+    }
+
     if (scenes.length === 0) return
 
     setIsGeneratingVideo(true)
@@ -306,9 +323,6 @@ export default function VideoGenerator() {
           ${productData.cta || "Shop Now"}!`
       }
 
-      // Get the voice ID from the selected voice
-      const voiceId = availableVoices[selectedVoice]
-
       // Call the generateCreatomateVideo function
       const response = await generateCreatomateVideo({
         slides,
@@ -329,7 +343,6 @@ export default function VideoGenerator() {
           voiceoverText: voiceoverText,
         },
         generateNarration: enableNarration,
-        voiceId: voiceId, // Pass the selected voice ID
       })
 
       if (response.success && response.renders && response.renders.length > 0) {
@@ -346,7 +359,66 @@ export default function VideoGenerator() {
       setVideoError(error instanceof Error ? error.message : "Unknown error occurred")
       setIsGeneratingVideo(false)
     }
-  }, [scenes, videoTheme, productData, enableNarration, selectedVoice, availableVoices])
+  }, [scenes, videoTheme, productData, enableNarration, movieData])
+
+  // Generate movie video using Veo API and Creatomate for stitching
+  const handleGenerateMovieVideo = useCallback(async () => {
+    setIsGeneratingVideo(true)
+    setVideoError(null)
+    setVideoUrl(null)
+    setRenderId(null)
+    setRenderStatus(null)
+    setVideoProgress(0)
+    setGeneratedClips([])
+
+    try {
+      // Step 1: Generate video clips with Veo API
+      setVideoProgress(5)
+      setRenderStatus("generating clips")
+
+      const veoResponse = await generateVeoVideo({
+        prompt: movieData.prompt,
+        aspectRatio: aspectRatio === "1:1" ? "16:9" : aspectRatio, // Veo only supports 16:9 and 9:16
+        numberOfClips: movieData.numberOfClips,
+        clipDuration: movieData.clipDuration,
+      })
+
+      if (!veoResponse.success) {
+        throw new Error(veoResponse.error || "Failed to generate video clips")
+      }
+
+      setGeneratedClips(veoResponse.videoUrls)
+      setVideoProgress(50)
+      setRenderStatus("stitching clips")
+
+      // Step 2: Stitch videos together with Creatomate
+      const stitchResponse = await stitchVideos({
+        videoUrls: veoResponse.videoUrls,
+        transitionDuration: movieData.transitionDuration,
+        aspectRatio: aspectRatio === "1:1" ? "16:9" : aspectRatio, // Match the aspect ratio used for generation
+      })
+
+      if (!stitchResponse.success) {
+        throw new Error(stitchResponse.error || "Failed to stitch video clips")
+      }
+
+      setRenderId(stitchResponse.renderId)
+      setRenderStatus(stitchResponse.status)
+      setPolling(true)
+
+      if (stitchResponse.url) {
+        setVideoUrl(stitchResponse.url)
+        setVideoProgress(100)
+        setIsGeneratingVideo(false)
+      } else {
+        setVideoProgress(70) // Initial progress for stitching
+      }
+    } catch (error) {
+      console.error("Error generating movie video:", error)
+      setVideoError(error instanceof Error ? error.message : "Unknown error occurred")
+      setIsGeneratingVideo(false)
+    }
+  }, [movieData, aspectRatio])
 
   // Poll for render status updates
   useEffect(() => {
@@ -354,7 +426,9 @@ export default function VideoGenerator() {
 
     const pollInterval = setInterval(async () => {
       try {
-        const response = await getCreatomateRenderStatus(renderId)
+        // Use the appropriate status check based on the video theme
+        const response =
+          videoTheme === "movie" ? await checkStitchingStatus(renderId) : await getCreatomateRenderStatus(renderId)
 
         if (response.success) {
           setRenderStatus(response.status || null)
@@ -406,7 +480,7 @@ export default function VideoGenerator() {
     }, 3000) // Poll every 3 seconds
 
     return () => clearInterval(pollInterval)
-  }, [polling, renderId])
+  }, [polling, renderId, videoTheme])
 
   return (
     <div className="container mx-auto p-4 max-w-5xl space-y-8">
@@ -421,211 +495,215 @@ export default function VideoGenerator() {
         </CardHeader>
 
         <CardContent className="space-y-8">
-          {/* Step 1: Image Generation */}
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-semibold">1. Generate Scene Images</h2>
-              <Tabs
-                value={generationMode}
-                onValueChange={(value) => setGenerationMode(value as GenerationMode)}
-                className="w-[300px]"
-              >
-                <TabsList className="grid w-full grid-cols-2">
-                  <TabsTrigger value="basic">Basic (Google)</TabsTrigger>
-                  <TabsTrigger value="advanced">Advanced (OpenAI)</TabsTrigger>
-                </TabsList>
-              </Tabs>
-            </div>
+          {/* Step 1: Image Generation (only show for non-movie themes) */}
+          {videoTheme !== "movie" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold">1. Generate Scene Images</h2>
+                <Tabs
+                  value={generationMode}
+                  onValueChange={(value) => setGenerationMode(value as GenerationMode)}
+                  className="w-[300px]"
+                >
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="basic">Basic (Google)</TabsTrigger>
+                    <TabsTrigger value="advanced">Advanced (OpenAI)</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Left column: Controls */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="prompt">Prompt</Label>
-                  <Textarea
-                    id="prompt"
-                    placeholder="Describe the scene you want to generate..."
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    disabled={isGenerating || isEditing}
-                    className="min-h-[100px]"
-                  />
-                </div>
-
-                {generationMode === "advanced" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Left column: Controls */}
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="negative-prompt">Negative Prompt (Optional)</Label>
-                    <Input
-                      id="negative-prompt"
-                      placeholder="What to avoid in the generated image..."
-                      value={negativePrompt}
-                      onChange={(e) => setNegativePrompt(e.target.value)}
+                    <Label htmlFor="prompt">Prompt</Label>
+                    <Textarea
+                      id="prompt"
+                      placeholder="Describe the scene you want to generate..."
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
                       disabled={isGenerating || isEditing}
+                      className="min-h-[100px]"
                     />
                   </div>
-                )}
 
-                <AspectRatioSelector
-                  value={aspectRatio}
-                  onChange={setAspectRatio}
-                  disabled={isGenerating || isEditing}
-                />
+                  {generationMode === "advanced" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="negative-prompt">Negative Prompt (Optional)</Label>
+                      <Input
+                        id="negative-prompt"
+                        placeholder="What to avoid in the generated image..."
+                        value={negativePrompt}
+                        onChange={(e) => setNegativePrompt(e.target.value)}
+                        disabled={isGenerating || isEditing}
+                      />
+                    </div>
+                  )}
 
-                <div className="grid grid-cols-2 gap-3">
+                  <AspectRatioSelector
+                    value={aspectRatio}
+                    onChange={setAspectRatio}
+                    disabled={isGenerating || isEditing}
+                  />
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={() => startImageGeneration()}
+                      disabled={isGenerating || isEditing || !prompt.trim()}
+                      className="w-full"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Generating...
+                        </>
+                      ) : (
+                        <>Generate Image</>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isGenerating || isEditing}
+                      className="w-full"
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload Image
+                      <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleSingleImageUpload}
+                        accept="image/*"
+                        className="hidden"
+                      />
+                    </Button>
+                  </div>
+
                   <Button
-                    onClick={() => startImageGeneration()}
-                    disabled={isGenerating || isEditing || !prompt.trim()}
-                    className="w-full"
-                  >
-                    {isGenerating ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Generating...
-                      </>
-                    ) : (
-                      <>Generate Image</>
-                    )}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
+                    variant="secondary"
+                    onClick={() => multipleFileInputRef.current?.click()}
                     disabled={isGenerating || isEditing}
                     className="w-full"
                   >
-                    <Upload className="mr-2 h-4 w-4" />
-                    Upload Image
+                    <PlusCircle className="mr-2 h-4 w-4" />
+                    Add Multiple Images to Timeline
                     <input
                       type="file"
-                      ref={fileInputRef}
-                      onChange={handleSingleImageUpload}
+                      ref={multipleFileInputRef}
+                      onChange={handleMultipleImageUpload}
                       accept="image/*"
+                      multiple
                       className="hidden"
                     />
                   </Button>
                 </div>
 
-                <Button
-                  variant="secondary"
-                  onClick={() => multipleFileInputRef.current?.click()}
-                  disabled={isGenerating || isEditing}
-                  className="w-full"
-                >
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Add Multiple Images to Timeline
-                  <input
-                    type="file"
-                    ref={multipleFileInputRef}
-                    onChange={handleMultipleImageUpload}
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                  />
-                </Button>
-              </div>
-
-              {/* Right column: Preview */}
-              <div className="space-y-4">
-                <ImagePreview
-                  imageUrl={editedImageUrl || generatedImageUrl}
-                  aspectRatio={aspectRatio}
-                  isLoading={isGenerating}
-                  isEmpty={!generatedImageUrl && !editedImageUrl}
-                />
-
-                {(generatedImageUrl || editedImageUrl) && !editMode && (
-                  <div className="space-y-4">
-                    <CaptionInput
-                      value={currentCaption}
-                      onChange={setCurrentCaption}
-                      isLoading={isCaptionLoading}
-                      disabled={!generatedImageUrl && !editedImageUrl}
-                      imageUrl={editedImageUrl || generatedImageUrl}
-                    />
-
-                    <ImageEditPanel
-                      onEditModeChange={setEditMode}
-                      editPrompt={editPrompt}
-                      onEditPromptChange={setEditPrompt}
-                      onApplyEdit={handleEditImage}
-                      isEditing={isEditing}
-                      disabled={isGenerating}
-                    />
-
-                    <Button
-                      onClick={addSceneToTimeline}
-                      disabled={isGenerating || isEditing}
-                      className="w-full bg-green-600 hover:bg-green-700"
-                    >
-                      <PlusCircle className="mr-2 h-4 w-4" />
-                      Add to Timeline
-                    </Button>
-                  </div>
-                )}
-
-                {generatedImageUrl && editMode && (
-                  <MaskEditor
-                    imageUrl={generatedImageUrl}
+                {/* Right column: Preview */}
+                <div className="space-y-4">
+                  <ImagePreview
+                    imageUrl={editedImageUrl || generatedImageUrl}
                     aspectRatio={aspectRatio}
-                    onMaskApplied={handleEditImage}
-                    onCancel={() => setEditMode(false)}
-                    disabled={isEditing}
+                    isLoading={isGenerating}
+                    isEmpty={!generatedImageUrl && !editedImageUrl}
                   />
-                )}
+
+                  {(generatedImageUrl || editedImageUrl) && !editMode && (
+                    <div className="space-y-4">
+                      <CaptionInput
+                        value={currentCaption}
+                        onChange={setCurrentCaption}
+                        isLoading={isCaptionLoading}
+                        disabled={!generatedImageUrl && !editedImageUrl}
+                        imageUrl={editedImageUrl || generatedImageUrl}
+                      />
+
+                      <ImageEditPanel
+                        onEditModeChange={setEditMode}
+                        editPrompt={editPrompt}
+                        onEditPromptChange={setEditPrompt}
+                        onApplyEdit={handleEditImage}
+                        isEditing={isEditing}
+                        disabled={isGenerating}
+                      />
+
+                      <Button
+                        onClick={addSceneToTimeline}
+                        disabled={isGenerating || isEditing}
+                        className="w-full bg-green-600 hover:bg-green-700"
+                      >
+                        <PlusCircle className="mr-2 h-4 w-4" />
+                        Add to Timeline
+                      </Button>
+                    </div>
+                  )}
+
+                  {generatedImageUrl && editMode && (
+                    <MaskEditor
+                      imageUrl={generatedImageUrl}
+                      aspectRatio={aspectRatio}
+                      onMaskApplied={handleEditImage}
+                      onCancel={() => setEditMode(false)}
+                      disabled={isEditing}
+                    />
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Step 2: Timeline */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">
-              2. Scene Timeline ({scenes.length} {scenes.length === 1 ? "scene" : "scenes"})
-            </h2>
+          {/* Step 2: Timeline (only show for non-movie themes) */}
+          {videoTheme !== "movie" && (
+            <div className="space-y-4">
+              <h2 className="text-xl font-semibold">
+                2. Scene Timeline ({scenes.length} {scenes.length === 1 ? "scene" : "scenes"})
+              </h2>
 
-            {scenes.length === 0 ? (
-              <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-8 text-center">
-                <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
-                <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No scenes added yet</h3>
-                <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                  Generate or upload images and add them to your timeline.
-                </p>
-              </div>
-            ) : (
-              <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
-                <DndContext sensors={[]} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-                  <SortableContext items={scenes.map((scene) => scene.id)} strategy={horizontalListSortingStrategy}>
-                    <div className="overflow-x-auto pb-2">
-                      <div className="flex gap-4 min-w-max">
-                        {scenes.map((scene, index) => (
-                          <TimelineScene
-                            key={scene.id}
-                            scene={scene}
-                            index={index}
-                            onMove={moveScene}
-                            onDelete={removeScene}
-                            onCaptionChange={updateSceneCaption}
-                            disabled={isGeneratingVideo}
-                            isDragging={draggedSceneId === scene.id}
-                            setIsDragging={(isDragging) => {
-                              if (isDragging) setDraggedSceneId(scene.id)
-                              else if (draggedSceneId === scene.id) setDraggedSceneId(null)
-                            }}
-                            isMobile={isMobile}
-                            isLast={index === scenes.length - 1}
-                            isFirst={index === 0}
-                          />
-                        ))}
+              {scenes.length === 0 ? (
+                <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-lg p-8 text-center">
+                  <ImageIcon className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-4 text-lg font-medium text-gray-900 dark:text-gray-100">No scenes added yet</h3>
+                  <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                    Generate or upload images and add them to your timeline.
+                  </p>
+                </div>
+              ) : (
+                <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800">
+                  <DndContext sensors={[]} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                    <SortableContext items={scenes.map((scene) => scene.id)} strategy={horizontalListSortingStrategy}>
+                      <div className="overflow-x-auto pb-2">
+                        <div className="flex gap-4 min-w-max">
+                          {scenes.map((scene, index) => (
+                            <TimelineScene
+                              key={scene.id}
+                              scene={scene}
+                              index={index}
+                              onMove={moveScene}
+                              onDelete={removeScene}
+                              onCaptionChange={updateSceneCaption}
+                              disabled={isGeneratingVideo}
+                              isDragging={draggedSceneId === scene.id}
+                              setIsDragging={(isDragging) => {
+                                if (isDragging) setDraggedSceneId(scene.id)
+                                else if (draggedSceneId === scene.id) setDraggedSceneId(null)
+                              }}
+                              isMobile={isMobile}
+                              isLast={index === scenes.length - 1}
+                              isFirst={index === 0}
+                            />
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  </SortableContext>
-                </DndContext>
-              </div>
-            )}
-          </div>
+                    </SortableContext>
+                  </DndContext>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Step 3: Video Generation */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">3. Generate Video</h2>
+            <h2 className="text-xl font-semibold">{videoTheme !== "movie" ? "3. " : ""}Generate Video</h2>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Left column: Video settings */}
@@ -634,7 +712,10 @@ export default function VideoGenerator() {
                   <Label htmlFor="video-theme">Video Theme</Label>
                   <Select
                     value={videoTheme}
-                    onValueChange={(value) => setVideoTheme(value as VideoTheme)}
+                    onValueChange={(value) => {
+                      setVideoTheme(value as VideoTheme)
+                      resetVideoState()
+                    }}
                     disabled={isGeneratingVideo}
                   >
                     <SelectTrigger id="video-theme">
@@ -643,6 +724,7 @@ export default function VideoGenerator() {
                     <SelectContent>
                       <SelectItem value="social-reel">Social Media Reel</SelectItem>
                       <SelectItem value="product-showcase">Product Showcase</SelectItem>
+                      <SelectItem value="movie">AI Movie (Veo)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -651,8 +733,25 @@ export default function VideoGenerator() {
                   <ProductShowcaseForm data={productData} onChange={setProductData} disabled={isGeneratingVideo} />
                 )}
 
-                {/* Narration options */}
-                <div className="space-y-4">
+                {videoTheme === "movie" && (
+                  <>
+                    <MovieForm data={movieData} onChange={setMovieData} disabled={isGeneratingVideo} />
+
+                    <AspectRatioSelector value={aspectRatio} onChange={setAspectRatio} disabled={isGeneratingVideo} />
+
+                    {generatedClips.length > 0 && (
+                      <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
+                        <p className="font-medium">Generated {generatedClips.length} video clips</p>
+                        <p className="mt-1">
+                          Clips will be stitched together with {movieData.transitionDuration}s fade transitions
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Narration option (only for non-movie themes) */}
+                {videoTheme !== "movie" && (
                   <div className="flex items-center space-x-2">
                     <Switch
                       id="narration-mode"
@@ -665,42 +764,20 @@ export default function VideoGenerator() {
                       Generate AI Narration from Captions
                     </Label>
                   </div>
+                )}
 
-                  {enableNarration && (
-                    <div className="space-y-4">
-                      <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
-                        <p>Captions will be converted to spoken narration using ElevenLabs AI voices.</p>
-                        <p className="mt-1 font-medium">Captions will also be displayed as text in the video.</p>
-                        {scenes.some((scene) => !scene.caption) && (
-                          <p className="mt-1 text-amber-600 dark:text-amber-400">
-                            <strong>Warning:</strong> Some scenes don't have captions. Add captions to all scenes for
-                            best results.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="voice-selection" className="flex items-center">
-                          <Mic className="mr-2 h-4 w-4" />
-                          Voice Selection
-                        </Label>
-                        <Select value={selectedVoice} onValueChange={setSelectedVoice} disabled={isGeneratingVideo}>
-                          <SelectTrigger id="voice-selection">
-                            <SelectValue placeholder="Select a voice" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="alloy">Alloy (Versatile)</SelectItem>
-                            <SelectItem value="echo">Echo (Versatile)</SelectItem>
-                            <SelectItem value="fable">Fable (Narration)</SelectItem>
-                            <SelectItem value="shimmer">Shimmer (Cheerful)</SelectItem>
-                            <SelectItem value="nova">Nova (Authoritative)</SelectItem>
-                            <SelectItem value="ember">Ember (Warm)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                {videoTheme !== "movie" && enableNarration && (
+                  <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 p-3 text-sm text-blue-800 dark:text-blue-200">
+                    <p>Captions will be converted to spoken narration using ElevenLabs AI voices.</p>
+                    <p className="mt-1 font-medium">Captions will also be displayed as text in the video.</p>
+                    {scenes.some((scene) => !scene.caption) && (
+                      <p className="mt-1 text-amber-600 dark:text-amber-400">
+                        <strong>Warning:</strong> Some scenes don't have captions. Add captions to all scenes for best
+                        results.
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 {videoTheme === "social-reel" && scenes.length < 3 && (
                   <div className="text-amber-500 text-sm">
@@ -711,10 +788,11 @@ export default function VideoGenerator() {
                 <Button
                   onClick={handleGenerateVideo}
                   disabled={
-                    scenes.length === 0 ||
+                    (videoTheme !== "movie" && scenes.length === 0) ||
                     isGeneratingVideo ||
                     (videoTheme === "product-showcase" && !productData.productName) ||
-                    (videoTheme === "social-reel" && scenes.length < 3)
+                    (videoTheme === "social-reel" && scenes.length < 3) ||
+                    (videoTheme === "movie" && !movieData.prompt)
                   }
                   className="w-full bg-red-600 hover:bg-red-700"
                 >
@@ -725,8 +803,17 @@ export default function VideoGenerator() {
                     </>
                   ) : (
                     <>
-                      Generate {enableNarration ? "Narrated " : ""}
-                      {videoTheme.replace("-", " ")} Video
+                      Generate{" "}
+                      {videoTheme === "movie" ? (
+                        <>
+                          <Clapperboard className="mx-1 h-4 w-4" /> Movie
+                        </>
+                      ) : (
+                        <>
+                          {enableNarration ? "Narrated " : ""}
+                          {videoTheme.replace("-", " ")} Video
+                        </>
+                      )}
                     </>
                   )}
                 </Button>
@@ -738,6 +825,11 @@ export default function VideoGenerator() {
                       <span>{Math.round(videoProgress)}%</span>
                     </div>
                     <Progress value={videoProgress} />
+                    {videoTheme === "movie" && videoProgress < 50 && (
+                      <p className="text-xs text-muted-foreground">
+                        Generating video clips with Google Veo. This may take several minutes...
+                      </p>
+                    )}
                     {enableNarration && videoProgress < 50 && (
                       <p className="text-xs text-muted-foreground">
                         Generating narration takes a bit longer. Please be patient...
@@ -752,12 +844,16 @@ export default function VideoGenerator() {
                   </div>
                 )}
 
-                {scenes.length === 0 && (
+                {videoTheme !== "movie" && scenes.length === 0 && (
                   <p className="text-sm text-red-500">Add at least one scene to generate a video</p>
                 )}
 
                 {videoTheme === "product-showcase" && !productData.productName && scenes.length > 0 && (
                   <p className="text-sm text-red-500">Product Name is required for Product Showcase</p>
+                )}
+
+                {videoTheme === "movie" && !movieData.prompt && (
+                  <p className="text-sm text-red-500">Movie prompt is required</p>
                 )}
               </div>
 

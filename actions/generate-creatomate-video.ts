@@ -34,7 +34,6 @@ interface GenerateVideoRequest {
     voiceoverText?: string
   }
   generateNarration?: boolean
-  voiceId?: string // Add voice ID parameter
 }
 
 interface CreatomateRender {
@@ -177,7 +176,6 @@ export async function generateCreatomateVideo({
   aspectRatio,
   productData,
   generateNarration = false,
-  voiceId, // Optional voice ID parameter
 }: GenerateVideoRequest): Promise<CreatomateResponse> {
   console.log(`Starting Creatomate video generation with template: ${template}`)
 
@@ -253,6 +251,55 @@ export async function generateCreatomateVideo({
     modifications.width = width
     modifications.height = height
 
+    // Generate voiceovers for each slide if requested
+    const voiceoverUrls: string[] = []
+
+    if (generateNarration) {
+      console.log("Generating narrated captions with ElevenLabs...")
+
+      // Generate individual voiceovers for each slide with a caption
+      for (let i = 0; i < processedSlides.length; i++) {
+        const slide = processedSlides[i]
+        if (slide.caption) {
+          try {
+            // Use the actual caption text for voiceover generation
+            const voiceoverResult = await generateVoiceover({
+              text: slide.caption,
+              // Use default voice (Alloy)
+            })
+
+            if (voiceoverResult.success && voiceoverResult.audioUrl) {
+              voiceoverUrls[i] = voiceoverResult.audioUrl
+              console.log(`Generated voiceover for slide ${i + 1}: ${voiceoverResult.audioUrl}`)
+            } else {
+              console.warn(`Failed to generate voiceover for slide ${i + 1}: ${voiceoverResult.error}`)
+              // Continue without voiceover for this slide
+            }
+          } catch (error) {
+            console.error(`Error generating voiceover for slide ${i + 1}:`, error)
+            // Continue without voiceover for this slide
+          }
+        }
+      }
+    } else if (productData?.voiceoverText) {
+      // Use the provided voiceover text for the entire video
+      try {
+        const voiceoverResult = await generateVoiceover({
+          text: productData.voiceoverText,
+        })
+
+        if (voiceoverResult.success && voiceoverResult.audioUrl) {
+          // Use this single voiceover for the entire video
+          modifications["Voiceover.source"] = voiceoverResult.audioUrl
+          console.log(`Generated main voiceover: ${voiceoverResult.audioUrl}`)
+        } else {
+          console.warn(`Failed to generate main voiceover: ${voiceoverResult.error}`)
+        }
+      } catch (error) {
+        console.error("Error generating main voiceover:", error)
+      }
+    }
+
     // Apply template-specific modifications
     if (template === "social-reel") {
       // Limit to 4 slides for social reel
@@ -260,37 +307,15 @@ export async function generateCreatomateVideo({
 
       for (let i = 0; i < maxSlides; i++) {
         const slide = processedSlides[i]
-
-        // Set image source
         modifications[`Image-${i + 1}.source`] = slide.imageUrl
 
-        // Set the text content to the actual caption text
-        const captionText = slide.caption || `Scene ${i + 1}`
-        modifications[`Text-${i + 1}.text`] = captionText
+        // Always use the caption text for the displayed text
+        modifications[`Text-${i + 1}.text`] = slide.caption || `Item ${i + 1}`
 
-        // Handle narration
-        if (generateNarration && slide.caption) {
-          try {
-            // Generate voiceover for this caption
-            const voiceoverResult = await generateVoiceover({
-              text: slide.caption,
-              voiceId: voiceId, // Use the selected voice if provided
-            })
-
-            if (voiceoverResult.success && voiceoverResult.audioUrl) {
-              // Set the audio source to the generated voiceover URL
-              modifications[`Voiceover-${i + 1}.source`] = voiceoverResult.audioUrl
-              console.log(`Set voiceover for slide ${i + 1} to: ${voiceoverResult.audioUrl}`)
-            } else {
-              // If voiceover generation failed, let Creatomate handle it
-              console.warn(`Failed to generate voiceover for slide ${i + 1}, using text directly`)
-              modifications[`Voiceover-${i + 1}.text`] = slide.caption
-            }
-          } catch (error) {
-            console.error(`Error generating voiceover for slide ${i + 1}:`, error)
-            // Fall back to letting Creatomate handle the TTS
-            modifications[`Voiceover-${i + 1}.text`] = slide.caption
-          }
+        // Following the reference implementation, use caption text directly as the voiceover source
+        if (slide.caption) {
+          modifications[`Voiceover-${i + 1}.source`] = slide.caption
+          console.log(`Set voiceover source for slide ${i + 1} to caption text: "${slide.caption}"`)
         }
       }
     } else if (template === "product-showcase" && productData) {
@@ -298,8 +323,8 @@ export async function generateCreatomateVideo({
       modifications["Product-Image.source"] = processedSlides[0]?.imageUrl
 
       // Use the caption as the product name if available
-      const productName = processedSlides[0]?.caption || sanitizeText(productData.productName) || "Product Name"
-      modifications["Product-Name.text"] = productName
+      modifications["Product-Name.text"] =
+        processedSlides[0]?.caption || sanitizeText(productData.productName) || "Product Name"
 
       modifications["Product-Description.text"] = sanitizeText(productData.productDescription) || "Product Description"
       modifications["Normal-Price.text"] = `$${productData.normalPrice.trim() || "99.99"}`
@@ -316,40 +341,15 @@ export async function generateCreatomateVideo({
         modifications["Logo.source"] = logoUrl
       }
 
-      // Handle narration for product showcase
-      if (generateNarration) {
-        const voiceoverText =
-          processedSlides[0]?.caption ||
-          `Introducing our amazing ${productName}. ${productData.productDescription || ""}. 
-          Now only $${productData.discountedPrice || "79.99"} from $${productData.normalPrice || "99.99"}. 
-          ${productData.cta || "Shop Now"}!`
-
-        try {
-          // Generate voiceover for the product
-          const voiceoverResult = await generateVoiceover({
-            text: voiceoverText,
-            voiceId: voiceId, // Use the selected voice if provided
-          })
-
-          if (voiceoverResult.success && voiceoverResult.audioUrl) {
-            // Set the audio source to the generated voiceover URL
-            modifications["Voiceover.source"] = voiceoverResult.audioUrl
-            console.log(`Set product voiceover to: ${voiceoverResult.audioUrl}`)
-          } else {
-            // If voiceover generation failed, let Creatomate handle it
-            console.warn(`Failed to generate product voiceover, using text directly`)
-            modifications["Voiceover.text"] = voiceoverText
-          }
-        } catch (error) {
-          console.error(`Error generating product voiceover:`, error)
-          // Fall back to letting Creatomate handle the TTS
-          modifications["Voiceover.text"] = voiceoverText
-        }
+      // If we have a voiceover for the first slide, use it
+      if (generateNarration && voiceoverUrls[0]) {
+        modifications["Voiceover.source"] = voiceoverUrls[0]
+      } else if (generateNarration && processedSlides[0]?.caption) {
+        // If we don't have a pre-generated voiceover but we do have caption text,
+        // pass the text directly to Creatomate for narration
+        modifications["Voiceover.text"] = processedSlides[0].caption
       }
     }
-
-    // Log the modifications to help with debugging
-    console.log("Creatomate modifications:", JSON.stringify(modifications, null, 2))
 
     // Prepare final request
     const requestData = {
