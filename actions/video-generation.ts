@@ -1,18 +1,7 @@
 "use server"
 
-import type {
-  VideoGenerationOptions,
-  VideoTheme,
-  Scene,
-  ProductShowcaseData,
-  CinematicData,
-} from "@/components/video-generator/types"
-import {
-  generateProductShowcase,
-  generateProductCarousel,
-  generateCinematicVideo as generateCinematicVideoApi,
-  checkRenderStatus,
-} from "./creatomate-api"
+import type { VideoGenerationOptions, VideoTheme, Scene, ProductShowcaseData } from "@/components/video-generator/types"
+import { generateProductShowcase, generateProductCarousel, checkRenderStatus } from "./creatomate-api"
 
 // --- Type Definitions ---
 interface VideoGenerationTask {
@@ -37,7 +26,7 @@ const generateId = () => `task-${Date.now()}-${Math.random().toString(36).slice(
  * Initiates video generation with the provided options
  */
 export async function generateVideo(options: VideoGenerationOptions) {
-  const { scenes, theme, productData, cinematicData } = options
+  const { scenes, theme, productData } = options
 
   // Validate input
   if (!scenes.length) {
@@ -55,7 +44,7 @@ export async function generateVideo(options: VideoGenerationOptions) {
   })
 
   // Start generation process asynchronously
-  startVideoGeneration(generationId, scenes, theme, productData, cinematicData).catch((error) => {
+  startVideoGeneration(generationId, scenes, theme, productData).catch((error) => {
     console.error("Error in background video generation:", error)
     const task = videoTasks.get(generationId)
     if (task) {
@@ -151,7 +140,6 @@ async function startVideoGeneration(
   scenes: Scene[],
   theme: VideoTheme,
   productData?: ProductShowcaseData,
-  cinematicData?: CinematicData,
 ) {
   // Update task status
   const task = videoTasks.get(generationId)
@@ -164,8 +152,6 @@ async function startVideoGeneration(
   try {
     if (theme === "social-reel" || theme === "product-showcase") {
       await generateWithCreatomate(generationId, scenes, theme, productData)
-    } else if (theme === "cinematic" && scenes.some((scene) => scene.isVideo)) {
-      await generateCinematicVideo(generationId, scenes, cinematicData)
     } else {
       // Fallback for other themes
       await simulateVideoGeneration(generationId, scenes, theme)
@@ -250,71 +236,6 @@ async function generateWithCreatomate(
       videoTasks.set(generationId, task)
     }
     throw error // Re-throw to be caught by the caller
-  }
-}
-
-/**
- * Generates cinematic video
- */
-async function generateCinematicVideo(generationId: string, scenes: Scene[], cinematicData?: CinematicData) {
-  updateProgress(generationId, 0.1)
-
-  try {
-    // Filter video scenes
-    const videoScenes = scenes.filter((scene) => scene.isVideo && scene.videoUrl)
-
-    if (videoScenes.length === 0) {
-      throw new Error("No video scenes found for cinematic template")
-    }
-
-    // Get video URLs
-    const videoUrls = videoScenes.map((scene) => scene.videoUrl!)
-
-    // Get a profile picture (use the first non-video scene or the first scene's image)
-    const profilePicture = scenes.find((scene) => !scene.isVideo)?.imageUrl || scenes[0].imageUrl
-
-    // Use default values if cinematicData is not provided
-    const data = cinematicData || {
-      description: "Los Angeles, CA 90045\nCall (123) 555-1234 to arrange a viewing today",
-      subtext: "Just Listed",
-      brandName: "My Brand Realtors",
-      name: "Elisabeth Parker",
-      email: "elisabeth@mybrand.com",
-      phoneNumber: "(123) 555-1234",
-    }
-
-    const result = await generateCinematicVideoApi({
-      videos: videoUrls,
-      picture: profilePicture,
-      description: data.description,
-      subtext: data.subtext,
-      brandName: data.brandName,
-      name: data.name,
-      email: data.email,
-      phoneNumber: data.phoneNumber,
-    })
-
-    if (!result.success) {
-      throw new Error(result.error || "Failed to generate cinematic video")
-    }
-
-    // Store render ID for status checking
-    const task = videoTasks.get(generationId)
-    if (!task) return
-
-    task.creatomateRenderId = result.renderId
-    task.progress = 0.3
-
-    videoTasks.set(generationId, task)
-  } catch (error) {
-    console.error("Error generating cinematic video:", error)
-    const task = videoTasks.get(generationId)
-    if (task) {
-      task.status = "failed"
-      task.error = error instanceof Error ? error.message : "Unknown error"
-      videoTasks.set(generationId, task)
-    }
-    throw error
   }
 }
 

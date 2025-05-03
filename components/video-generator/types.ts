@@ -2,7 +2,7 @@ export type AspectRatio = "16:9" | "9:16" | "1:1"
 
 export type GenerationMode = "basic" | "advanced"
 
-export type VideoTheme = "social-reel" | "product-showcase" | "movie" | "cinematic"
+export type VideoTheme = "social-reel" | "product-showcase" | "movie"
 
 export interface ImageGenerationOptions {
   prompt: string
@@ -22,8 +22,6 @@ export interface Scene {
   imageUrl: string
   caption?: string
   aspectRatio: AspectRatio
-  isVideo?: boolean
-  videoUrl?: string
 }
 
 export interface ProductShowcaseData {
@@ -44,18 +42,8 @@ export interface MovieGenerationData {
   transitionDuration: number
 }
 
-export interface CinematicData {
-  description: string
-  subtext: string
-  brandName: string
-  name: string
-  email: string
-  phoneNumber: string
-}
-
 export interface VideoGenerationOptions {
   scenes: Scene[]
   theme: VideoTheme
   productData?: ProductShowcaseData
-  cinematicData?: CinematicData
 }

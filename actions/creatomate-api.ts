@@ -11,11 +11,8 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 const STORAGE_BUCKET = "creatomate-assets"
 
 // Template IDs
-const TEMPLATE_IDS = {
-  "social-reel": "cdaca80d-b8aa-4b20-a693-223f5ef24f77",
-  "product-showcase": "d22afb81-612a-47da-9923-090afeac32a1",
-  cinematic: "c7c5a25a-5ddc-47cd-b125-9e6848856dfd",
-}
+const PRODUCT_SHOWCASE_TEMPLATE_ID = "d22afb81-612a-47da-9923-090afeac32a1"
+const PRODUCT_CAROUSEL_TEMPLATE_ID = "cdaca80d-b8aa-4b20-a693-223f5ef24f77"
 
 // Types
 export type CreatomateStatus = "planned" | "waiting" | "transcribing" | "rendering" | "succeeded" | "failed"
@@ -143,7 +140,7 @@ export async function generateProductShowcase(params: ProductShowcaseParams) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        template_id: TEMPLATE_IDS["product-showcase"],
+        template_id: PRODUCT_SHOWCASE_TEMPLATE_ID,
         modifications,
         output_format: "mp4",
       }),
@@ -218,7 +215,7 @@ export async function generateProductCarousel(params: ProductCarouselParams) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        template_id: TEMPLATE_IDS["social-reel"],
+        template_id: PRODUCT_CAROUSEL_TEMPLATE_ID,
         modifications,
         output_format: "mp4",
       }),
@@ -277,86 +274,6 @@ export async function checkRenderStatus(renderId: string) {
     }
   } catch (error) {
     console.error("Error checking render status:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error occurred",
-    }
-  }
-}
-
-export async function generateCinematicVideo({
-  videos,
-  picture,
-  description,
-  subtext,
-  brandName,
-  name,
-  email,
-  phoneNumber,
-}: {
-  videos: string[]
-  picture: string
-  description: string
-  subtext: string
-  brandName: string
-  name: string
-  email: string
-  phoneNumber: string
-}) {
-  const apiKey = process.env.CREATOMATE_API_KEY
-  if (!apiKey) {
-    return { success: false, error: "Missing Creatomate API key" }
-  }
-
-  try {
-    // Ensure we have at least 4 videos
-    const videoSources = [...videos]
-    while (videoSources.length < 4) {
-      videoSources.push(videos[0] || "https://creatomate.com/files/assets/ef8fe36b-2e81-4495-abe8-9d6d2e8c8f1e")
-    }
-
-    const response = await fetch("https://api.creatomate.com/v1/renders", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        template_id: TEMPLATE_IDS.cinematic,
-        modifications: {
-          "Video-1.source": videoSources[0],
-          "Video-2.source": videoSources[1],
-          "Video-3.source": videoSources[2],
-          "Video-4.source": videoSources[3],
-          "Description.text": description,
-          "Subtext.text": subtext,
-          "Picture.source": picture,
-          "Email.text": email,
-          "Phone-Number.text": phoneNumber,
-          "Brand-Name.text": brandName,
-          "Name.text": name,
-        },
-      }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      throw new Error(`Creatomate API error: ${response.status} - ${errorText}`)
-    }
-
-    const data = await response.json()
-
-    if (!Array.isArray(data) || data.length === 0) {
-      return { success: false, error: "Invalid response from Creatomate API" }
-    }
-
-    return {
-      success: true,
-      renderId: data[0].id,
-      status: data[0].status,
-    }
-  } catch (error) {
-    console.error("Error generating cinematic video:", error)
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error occurred",
