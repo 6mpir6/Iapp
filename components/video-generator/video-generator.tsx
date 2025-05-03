@@ -30,6 +30,8 @@ import { Loader2, Upload, Film, ImageIcon, PlusCircle, Volume2, Clapperboard } f
 import { generateCreatomateVideo, getCreatomateRenderStatus } from "@/actions/generate-creatomate-video"
 import { generateVeoVideo } from "@/actions/veo-api"
 import { stitchVideos, checkStitchingStatus } from "@/actions/stitch-videos"
+// Import the SocialMediaShare component at the top of the file with other imports
+import { SocialMediaShare } from "./social-media-share"
 
 export default function VideoGenerator() {
   const { isMobile } = useMobile()
@@ -87,16 +89,6 @@ export default function VideoGenerator() {
     transitionDuration: 1,
   })
 
-  // Cinematic Real Estate state
-  const [cinematicData, setCinematicData] = useState({
-    description: "Los Angeles, CA 90045\nCall (123) 555-1234 to arrange a viewing today",
-    subtext: "Just Listed",
-    brandName: "My Brand Realtors",
-    name: "Elisabeth Parker",
-    email: "elisabeth@mybrand.com",
-    phoneNumber: "(123) 555-1234",
-  })
-
   // Narration state
   const [enableNarration, setEnableNarration] = useState(false)
 
@@ -125,7 +117,6 @@ export default function VideoGenerator() {
       imageUrl: editedImageUrl || generatedImageUrl || "",
       caption: currentCaption || undefined,
       aspectRatio,
-      isVideo: false, // Default to false
     }
 
     setScenes((prevScenes) => [...prevScenes, newScene])
@@ -291,23 +282,6 @@ export default function VideoGenerator() {
     setPolling(false)
     setGeneratedClips([])
   }, [])
-
-  const addVideoToTimeline = useCallback(
-    (videoUrl: string, thumbnailUrl: string) => {
-      const newScene: Scene = {
-        id: `scene-${Date.now()}`,
-        imageUrl: thumbnailUrl, // Use the image as thumbnail
-        videoUrl: videoUrl, // Store the video URL
-        caption: currentCaption || "Video scene",
-        aspectRatio,
-        isVideo: true,
-      }
-
-      setScenes((prevScenes) => [...prevScenes, newScene])
-      resetImageState()
-    },
-    [currentCaption, aspectRatio, resetImageState],
-  )
 
   // Generate video handler - Using our updated generateCreatomateVideo function
   const handleGenerateVideo = useCallback(async () => {
@@ -653,10 +627,6 @@ export default function VideoGenerator() {
                         onApplyEdit={handleEditImage}
                         isEditing={isEditing}
                         disabled={isGenerating}
-                        imageUrl={editedImageUrl || generatedImageUrl}
-                        onCreateVideo={(videoUrl) =>
-                          addVideoToTimeline(videoUrl, editedImageUrl || generatedImageUrl || "")
-                        }
                       />
 
                       <Button
@@ -757,7 +727,6 @@ export default function VideoGenerator() {
                       <SelectItem value="social-reel">Social Media Reel</SelectItem>
                       <SelectItem value="product-showcase">Product Showcase</SelectItem>
                       <SelectItem value="movie">AI Movie (Veo)</SelectItem>
-                      <SelectItem value="cinematic">Cinematic Real Estate</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -781,75 +750,6 @@ export default function VideoGenerator() {
                       </div>
                     )}
                   </>
-                )}
-
-                {videoTheme === "cinematic" && (
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Property Description</Label>
-                      <Textarea
-                        id="description"
-                        value={cinematicData.description}
-                        onChange={(e) => setCinematicData({ ...cinematicData, description: e.target.value })}
-                        placeholder="Property address and call to action"
-                        disabled={isGeneratingVideo}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="subtext">Subtext</Label>
-                      <Input
-                        id="subtext"
-                        value={cinematicData.subtext}
-                        onChange={(e) => setCinematicData({ ...cinematicData, subtext: e.target.value })}
-                        placeholder="Just Listed, Open House, etc."
-                        disabled={isGeneratingVideo}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="brandName">Brand Name</Label>
-                        <Input
-                          id="brandName"
-                          value={cinematicData.brandName}
-                          onChange={(e) => setCinematicData({ ...cinematicData, brandName: e.target.value })}
-                          placeholder="Your real estate brand"
-                          disabled={isGeneratingVideo}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="name">Agent Name</Label>
-                        <Input
-                          id="name"
-                          value={cinematicData.name}
-                          onChange={(e) => setCinematicData({ ...cinematicData, name: e.target.value })}
-                          placeholder="Your name"
-                          disabled={isGeneratingVideo}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email</Label>
-                        <Input
-                          id="email"
-                          value={cinematicData.email}
-                          onChange={(e) => setCinematicData({ ...cinematicData, email: e.target.value })}
-                          placeholder="your@email.com"
-                          disabled={isGeneratingVideo}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="phoneNumber">Phone Number</Label>
-                        <Input
-                          id="phoneNumber"
-                          value={cinematicData.phoneNumber}
-                          onChange={(e) => setCinematicData({ ...cinematicData, phoneNumber: e.target.value })}
-                          placeholder="(123) 456-7890"
-                          disabled={isGeneratingVideo}
-                        />
-                      </div>
-                    </div>
-                  </div>
                 )}
 
                 {/* Narration option (only for non-movie themes) */}
@@ -963,7 +863,7 @@ export default function VideoGenerator() {
               <div>
                 <VideoPreview videoUrl={videoUrl} />
                 {videoUrl && (
-                  <div className="mt-4 text-center">
+                  <div className="mt-4 space-y-2 flex flex-col items-center">
                     <a
                       href={videoUrl}
                       target="_blank"
@@ -972,6 +872,11 @@ export default function VideoGenerator() {
                     >
                       Open video in new tab
                     </a>
+                    <SocialMediaShare
+                      videoUrl={videoUrl}
+                      thumbnailUrl={scenes.length > 0 ? scenes[0].imageUrl : null}
+                      disabled={isGeneratingVideo}
+                    />
                   </div>
                 )}
               </div>
