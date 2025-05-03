@@ -361,7 +361,7 @@ export async function generateCreatomateVideo({
 
     console.log("Sending request to Creatomate:", JSON.stringify(requestData, null, 2))
 
-    // Call Creatomate API
+    // Call Creatomate API with improved error handling
     const response = await fetch(CREATOMATE_API_ENDPOINT, {
       method: "POST",
       headers: {
@@ -372,22 +372,35 @@ export async function generateCreatomateVideo({
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      let errorDetails = `Creatomate API error: ${response.status}`
+      let errorDetails = `Creatomate API error: ${response.status} ${response.statusText}`
 
       try {
-        const errorJson = JSON.parse(errorText)
-        errorDetails += ` - ${errorJson.message || JSON.stringify(errorJson)}`
-      } catch {
-        errorDetails += ` - ${errorText}`
+        const errorText = await response.text()
+        console.error("Creatomate error response:", errorText)
+
+        try {
+          const errorJson = JSON.parse(errorText)
+          errorDetails += ` - ${errorJson.message || JSON.stringify(errorJson)}`
+        } catch {
+          errorDetails += ` - ${errorText}`
+        }
+      } catch (readError) {
+        errorDetails += ` - Could not read error response: ${readError instanceof Error ? readError.message : String(readError)}`
       }
 
       console.error(errorDetails)
       return { success: false, error: errorDetails }
     }
 
-    const data = await response.json()
-    console.log("Creatomate API response:", JSON.stringify(data, null, 2))
+    let data
+    try {
+      data = await response.json()
+      console.log("Creatomate API response:", JSON.stringify(data, null, 2))
+    } catch (parseError) {
+      const errorDetails = `Failed to parse Creatomate API response: ${parseError instanceof Error ? parseError.message : String(parseError)}`
+      console.error(errorDetails)
+      return { success: false, error: errorDetails }
+    }
 
     if (!Array.isArray(data) || data.length === 0) {
       return { success: false, error: "Invalid response from Creatomate API" }
