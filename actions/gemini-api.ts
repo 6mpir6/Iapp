@@ -36,7 +36,7 @@ export async function generateGeminiImage(
 
     // Call the Gemini API with the updated model and configuration
     const response = await genAI.models.generateContent({
-      model: "gemini-2.0-flash-exp-image-generation",
+      model: "gemini-2.0-flash-preview-image-generation",
       contents: request.prompt,
       config: {
         responseModalities: [Modality.TEXT, Modality.IMAGE],
@@ -157,7 +157,7 @@ export async function editGeminiImage(imageUrl: string, prompt: string): Promise
 
     // Call the Gemini API with the updated model and configuration
     const response = await genAI.models.generateContent({
-      model: "gemini-2.0-flash-exp-image-generation",
+      model: "gemini-2.0-flash-preview-image-generation",
       contents: contents,
       config: {
         responseModalities: [Modality.TEXT, Modality.IMAGE],

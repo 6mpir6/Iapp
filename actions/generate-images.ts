@@ -60,7 +60,7 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
     const genAI = new GoogleGenAI({ apiKey })
 
     // Use the experimental image generation model
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-exp-image-generation" })
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash-preview-image-generation" })
 
     // Determine aspect ratio
     let aspectRatio = request.aspectRatio || "1:1" // Default to square
@@ -252,7 +252,7 @@ export async function editImage(request: ImageEditRequest): Promise<ImageGenerat
     console.log("Calling Gemini for image editing...")
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash-exp-image-generation",
+      model: "gemini-2.0-flash-preview-image-generation",
       contents: contents,
       config: {
         responseModalities: ["Text", "Image"],

@@ -200,6 +200,7 @@ export function ImageGenerator() {
       const result = await generateGeminiImage({
         prompt: generatePrompt,
         negativePrompt: "", // Optional negative prompt
+        modelName: "gemini-2.0-flash-preview-image-generation",
       })
 
       console.log("Gemini action result:", result)
@@ -266,7 +267,7 @@ export function ImageGenerator() {
           throw new Error("Cannot edit a placeholder image. Please upload or generate a real image first.")
         }
 
-        const result = await editGeminiImage(currentImage, editPrompt)
+        const result = await editGeminiImage(currentImage, editPrompt, "gemini-2.0-flash-preview-image-generation")
 
         if (!result || !result.imageUrl || result.imageUrl.toLowerCase().startsWith("error")) {
           throw new Error(result?.error || "Failed to edit image. Please try a different prompt.")
